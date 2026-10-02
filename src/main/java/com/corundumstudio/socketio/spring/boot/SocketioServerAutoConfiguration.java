@@ -1,9 +1,6 @@
 package com.corundumstudio.socketio.spring.boot;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.DisposableBean;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -16,18 +13,16 @@ import com.corundumstudio.socketio.annotation.SpringAnnotationScanner;
 import com.corundumstudio.socketio.handler.SuccessAuthorizationListener;
 import com.corundumstudio.socketio.listener.DefaultExceptionListener;
 import com.corundumstudio.socketio.listener.ExceptionListener;
-import com.corundumstudio.socketio.spring.boot.hooks.SocketioServerShutdownHook;
 import com.corundumstudio.socketio.store.MemoryStoreFactory;
 import com.corundumstudio.socketio.store.StoreFactory;
 
 import io.netty.channel.epoll.Epoll;
 
-@Configuration
+@Slf4j
+@Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(prefix = SocketioServerProperties.PREFIX, value = "enabled", havingValue = "true")
 @EnableConfigurationProperties({ SocketioServerProperties.class })
-public class SocketioServerAutoConfiguration implements DisposableBean {
-
-	protected static Logger LOG = LoggerFactory.getLogger(SocketioServerAutoConfiguration.class);
+public class SocketioServerAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
@@ -41,13 +36,14 @@ public class SocketioServerAutoConfiguration implements DisposableBean {
 		return  new DefaultExceptionListener();
 	}
 	
-	@Bean
+	@Bean(destroyMethod = "")
 	@ConditionalOnMissingBean
 	public StoreFactory clientStoreFactory() {
 		return new MemoryStoreFactory();
 	}
 	
-	@Bean(destroyMethod = "stop")
+	@Bean(destroyMethod = "")
+	@ConditionalOnMissingBean
 	public SocketIOServer socketIOServer(
 			SocketioServerProperties config,
 			AuthorizationListener socketAuthzListener,
@@ -62,36 +58,21 @@ public class SocketioServerAutoConfiguration implements DisposableBean {
 		if (config.isUseLinuxNativeEpoll()
 				&& !config.isFailIfNativeEpollLibNotPresent()
 				&& !Epoll.isAvailable()) {
-			LOG.warn("Epoll library not available, disabling native epoll");
+			log.warn("Epoll library not available, disabling native epoll");
 			config.setUseLinuxNativeEpoll(false);
 		}
 
-		final SocketIOServer server = new SocketIOServer(config);
-		
-		/**
-		 * 应用退出时，要调用shutdown来清理资源，关闭网络连接，注销自己
-		 * 注意：我们建议应用在JBOSS、Tomcat等容器的退出钩子里调用shutdown方法
-		 */
-		Runtime.getRuntime().addShutdownHook(new SocketioServerShutdownHook(server));
-		
-		server.start();
-		
-		return server;
+		return new SocketIOServer(config);
 	}
 
 	@Bean
-	public SpringAnnotationScanner springAnnotationScanner(SocketIOServer socketServer) {
+	public SocketioServerLifecycle socketioServerLifecycle(SocketIOServer server) {
+		return new SocketioServerLifecycle(server);
+	}
+
+	@Bean
+	public static SpringAnnotationScanner springAnnotationScanner(SocketIOServer socketServer) {
 		return new SpringAnnotationScanner(socketServer);
 	}
 	
-	@Autowired
-	protected SocketIOServer socketIOServer;
-	
-	@Override
-	public void destroy() throws Exception {
-		if (socketIOServer != null) {
-			socketIOServer.stop();
-		}
-	}
-
 }

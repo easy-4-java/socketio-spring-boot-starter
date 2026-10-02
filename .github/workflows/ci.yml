@@ -1,54 +1,86 @@
-# CI workflow for easy4j Spring Boot Starter
-#
-# Triggers:
-#   - push / pull_request on all version-line branches
-#   - manual workflow_dispatch
-#
-# JDK matrix by version line:
-#   - 2.3.x / 2.7.x : JDK 8
-#   - 3.0.x ~ 3.5.x : JDK 17
-#   - 4.0.x / 4.1.x : JDK 17 / 21
-#
-# Runs `mvn -B clean verify` with dependency convergence checks.
 name: CI
 
 on:
   push:
-    branches: [2.3.x, 2.7.x, 3.0.x, 3.1.x, 3.2.x, 3.3.x, 3.4.x, 3.5.x, 4.0.x, 4.1.x, master, main]
+    branches: [main]
   pull_request:
-    branches: [2.3.x, 2.7.x, 3.0.x, 3.1.x, 3.2.x, 3.3.x, 3.4.x, 3.5.x, 4.0.x, 4.1.x, master, main]
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      netty_socketio_version:
+        description: 'Published netty-socketio version to test'
+        required: true
+        default: '2.0.14'
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: JDK ${{ matrix.java }} Build & Verify
+    name: Boot ${{ matrix.boot }} / JDK ${{ matrix.java }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        java: [8, 17, 21]
+        include:
+          - {boot: '2.3.5.RELEASE', java: '8'}
+          - {boot: '2.6.0', java: '8'}
+          - {boot: '2.7.18', java: '8'}
+          - {boot: '2.7.18', java: '17'}
+          - {boot: '2.7.18', java: '21'}
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
           cache: maven
-
-      - name: Build and verify
-        run: mvn -B --no-transfer-progress clean verify
-
-      - name: Upload surefire reports
+      - name: Select Spring Boot compatibility baseline
+        env:
+          BOOT_VERSION: ${{ matrix.boot }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          pom = Path('src/it/consumer/pom.xml')
+          source = pom.read_text()
+          source, count = re.subn(r'(<parent>.*?<version>).*?(</version>)',
+                                 lambda match: match.group(1) + os.environ['BOOT_VERSION'] + match.group(2),
+                                 source, count=1, flags=re.S)
+          assert count == 1
+          pom.write_text(source)
+          PY
+      - name: Install starter artifact
+        env:
+          SOCKETIO_VERSION: ${{ inputs.netty_socketio_version || '2.0.14' }}
+        run: >-
+          mvn -B --no-transfer-progress clean install -DskipTests
+          -Dnetty-socketio.version="$SOCKETIO_VERSION"
+      - name: Test consuming application protocol, Redis cluster, and process restarts
+        env:
+          SOCKETIO_VERSION: ${{ inputs.netty_socketio_version || '2.0.14' }}
+        run: >-
+          mvn -B --no-transfer-progress -f src/it/consumer/pom.xml clean verify
+          -Dsocketio.test.redis.port=6379
+          -Dnetty-socketio.version="$SOCKETIO_VERSION"
+      - name: Upload test and child-process reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-reports-jdk${{ matrix.java }}
-          path: target/surefire-reports
+          name: reports-boot${{ matrix.boot }}-jdk${{ matrix.java }}
+          path: |
+            src/it/consumer/target/surefire-reports
+            src/it/consumer/target/test-process-logs
           retention-days: 14

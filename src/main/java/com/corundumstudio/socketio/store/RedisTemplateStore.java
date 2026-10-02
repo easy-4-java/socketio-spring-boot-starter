@@ -15,7 +15,6 @@
  */
 package com.corundumstudio.socketio.store;
 
-import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.redis.core.BoundHashOperations;
@@ -27,21 +26,17 @@ public class RedisTemplateStore implements Store {
     private final BoundHashOperations<Object, Object, Object> hashOperations;
 
     public RedisTemplateStore(UUID sessionId, RedisTemplate<Object, Object> redisTemplate) {
-    	this.hashOperations = redisTemplate.boundHashOps(sessionId);
+        this.hashOperations = redisTemplate.boundHashOps(sessionId.toString());
     }
 
     @Override
     public void set(String key, Object value) {
-    	hashOperations.put(key, value);  
+        hashOperations.put(key, value);
     }
 
-	@Override
+    @Override
     public <T> T get(String key) {
-		Map<Object, Object> map = hashOperations.entries();
-		if(map == null) {
-			return null;
-		}
-        return (T) map.get(key);
+        return (T) hashOperations.get(key);
     }
 
     @Override
@@ -51,7 +46,7 @@ public class RedisTemplateStore implements Store {
 
     @Override
     public void del(String key) {
-    	hashOperations.delete(key);
+        hashOperations.delete(key);
     }
 
 }

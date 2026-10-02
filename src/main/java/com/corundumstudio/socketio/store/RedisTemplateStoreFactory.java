@@ -23,18 +23,31 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
 import com.corundumstudio.socketio.store.pubsub.BaseStoreFactory;
 import com.corundumstudio.socketio.store.pubsub.PubSubStore;
+import com.corundumstudio.socketio.namespace.NamespacesHub;
+import com.corundumstudio.socketio.handler.AuthorizeHandler;
+import com.corundumstudio.socketio.protocol.JsonSupport;
 
 public class RedisTemplateStoreFactory extends BaseStoreFactory {
 
-	private final RedisTemplate<Object, Object> redisTemplate;
+    private final RedisTemplate<Object, Object> redisTemplate;
 
     private final PubSubStore pubSubStore;
- 
+    private final RedisMessageListenerContainer listenerContainer;
+
     public RedisTemplateStoreFactory(RedisTemplate<Object, Object> redisTemplate, RedisMessageListenerContainer listenerContainer) {
         this.redisTemplate = redisTemplate;
+        this.listenerContainer = listenerContainer;
         this.pubSubStore = new RedisTemplatePubSubStore(redisTemplate, listenerContainer, getNodeId());
     }
-    
+
+    @Override
+    public void init(NamespacesHub namespacesHub, AuthorizeHandler authorizeHandler, JsonSupport jsonSupport) {
+        // Spring 会先启动依赖容器；先暂停，再一次注册所有主题，避免动态订阅时丢失首条消息。
+        listenerContainer.stop();
+        super.init(namespacesHub, authorizeHandler, jsonSupport);
+        listenerContainer.start();
+    }
+
     @Override
     public Store createStore(UUID sessionId) {
         return new RedisTemplateStore(sessionId, redisTemplate);
@@ -47,7 +60,7 @@ public class RedisTemplateStoreFactory extends BaseStoreFactory {
 
     @Override
     public void shutdown() {
-       
+        pubSubStore.shutdown();
     }
 
     @Override

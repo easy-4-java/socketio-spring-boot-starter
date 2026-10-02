@@ -17,6 +17,8 @@ package com.corundumstudio.socketio.store;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Collections;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -29,81 +31,84 @@ import org.springframework.data.redis.core.RedisTemplate;
 @SuppressWarnings("unchecked")
 public class RedisTemplateMap<K, V> implements Map<K, V> {
 
-	private final String name;
-	private final BoundHashOperations<Object, Object, Object> hashOperations;
+    private final String name;
+    private final RedisTemplate<Object, Object> redisTemplate;
+    private final BoundHashOperations<Object, Object, Object> hashOperations;
 
-	public RedisTemplateMap(RedisTemplate<Object, Object> redisTemplate, String name) {
-		this.name = name;
-		this.hashOperations = redisTemplate.boundHashOps(name);
-	}
+    public RedisTemplateMap(RedisTemplate<Object, Object> redisTemplate, String name) {
+        this.name = name;
+        this.redisTemplate = redisTemplate;
+        this.hashOperations = redisTemplate.boundHashOps(name);
+    }
 
-	@Override
-	public int size() {
-		return hashOperations.size().intValue();
-	}
+    @Override
+    public int size() {
+        return hashOperations.size().intValue();
+    }
 
-	@Override
-	public boolean isEmpty() {
-		return size() > 0;
-	}
+    @Override
+    public boolean isEmpty() {
+        return size() == 0;
+    }
 
-	@Override
-	public boolean containsKey(Object key) {
-		return hashOperations.hasKey(key);
-	}
+    @Override
+    public boolean containsKey(Object key) {
+        return hashOperations.hasKey(key);
+    }
 
-	@Override
-	public boolean containsValue(Object value) {
-		return hashOperations.entries().containsValue(value);
-	}
+    @Override
+    public boolean containsValue(Object value) {
+        return hashOperations.entries().containsValue(value);
+    }
 
-	@Override
-	public V get(Object key) {
-		return (V) hashOperations.get(key);
-	}
+    @Override
+    public V get(Object key) {
+        return (V) hashOperations.get(key);
+    }
 
-	@Override
-	public V put(Object key, Object value) {
-		hashOperations.put(key, value);
-		return (V) value;
-	}
+    @Override
+    public V put(K key, V value) {
+        V previous = get(key);
+        hashOperations.put(key, value);
+        return previous;
+    }
 
-	@Override
-	public V remove(Object key) {
-		Object value = hashOperations.get(key);
-		hashOperations.delete(name, key);
-		return (V) value;
-	}
+    @Override
+    public V remove(Object key) {
+        Object value = hashOperations.get(key);
+        hashOperations.delete(key);
+        return (V) value;
+    }
 
-	@Override
-	public void putAll(Map<? extends K, ? extends V> m) {
-		hashOperations.putAll(m);
-	}
+    @Override
+    public void putAll(Map<? extends K, ? extends V> m) {
+        hashOperations.putAll(m);
+    }
 
-	@Override
-	public void clear() {
-		hashOperations.delete(name);
-	}
+    @Override
+    public void clear() {
+        redisTemplate.delete(name);
+    }
 
-	@Override
-	public Set<K> keySet() {
-		return (Set<K>) hashOperations.keys();
-	}
+    @Override
+    public Set<K> keySet() {
+        return (Set<K>) hashOperations.keys();
+    }
 
-	@Override
-	public Collection<V> values() {
-		return (Collection<V>) hashOperations.values();
-	}
+    @Override
+    public Collection<V> values() {
+        return (Collection<V>) hashOperations.values();
+    }
 
-	@Override
-	public Set<Entry<K, V>> entrySet() {
-		Set<Entry<Object, Object>> sets = hashOperations.entries().entrySet();
-		if(sets != null) {
-			return sets.stream().map((m) -> {
-				return (Entry<K, V>) m;
-			}).collect(Collectors.toSet());
-		}
-		return null;
-	}
+    @Override
+    public Set<Entry<K, V>> entrySet() {
+        Set<Entry<Object, Object>> sets = hashOperations.entries().entrySet();
+        if (Objects.nonNull(sets)) {
+            return sets.stream().map((m) -> {
+                return (Entry<K, V>) m;
+            }).collect(Collectors.toSet());
+        }
+        return Collections.emptySet();
+    }
 
 }

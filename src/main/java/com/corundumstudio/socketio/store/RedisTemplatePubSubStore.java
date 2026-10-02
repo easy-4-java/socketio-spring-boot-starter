@@ -16,6 +16,7 @@
 package com.corundumstudio.socketio.store;
 
 import java.util.Queue;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 
@@ -44,7 +45,7 @@ public class RedisTemplatePubSubStore implements PubSubStore {
         this.redisTemplate = redisTemplate;
         this.listenerContainer = listenerContainer;
         this.nodeId = nodeId;
-    } 
+    }
 
     @Override
     public void publish(PubSubType type, PubSubMessage msg) {
@@ -53,28 +54,28 @@ public class RedisTemplatePubSubStore implements PubSubStore {
     }
 
     @Override
-    public <T extends PubSubMessage> void subscribe(PubSubType type, final PubSubListener<T> listener, Class<T> clazz) {
+    public synchronized <T extends PubSubMessage> void subscribe(PubSubType type, final PubSubListener<T> listener, Class<T> clazz) {
         String name = type.toString();
         MessageListener msgListener = new MessageListener() {
 
-			@SuppressWarnings("unchecked")
-			@Override
-			public void onMessage(Message message, byte[] pattern) {
-				
-				byte[] body = message.getBody();
-				PubSubMessage msg = (PubSubMessage) redisTemplate.getValueSerializer().deserialize(body);
-				if (!nodeId.equals(msg.getNodeId())) {
+            @SuppressWarnings("unchecked")
+            @Override
+            public void onMessage(Message message, byte[] pattern) {
+
+                byte[] body = message.getBody();
+                PubSubMessage msg = (PubSubMessage) redisTemplate.getValueSerializer().deserialize(body);
+                if (Objects.nonNull(msg) && clazz.isInstance(msg) && !nodeId.equals(msg.getNodeId())) {
                     listener.onMessage((T) msg);
                 }
-			}
-        	
+            }
+
         };
         listenerContainer.addMessageListener(msgListener, new ChannelTopic(name));
         Queue<MessageListener> list = map.get(name);
-        if (list == null) {
+        if (Objects.isNull(list)) {
             list = new ConcurrentLinkedQueue<MessageListener>();
             Queue<MessageListener> oldList = map.putIfAbsent(name, list);
-            if (oldList != null) {
+            if (Objects.nonNull(oldList)) {
                 list = oldList;
             }
         }
@@ -82,16 +83,25 @@ public class RedisTemplatePubSubStore implements PubSubStore {
     }
 
     @Override
-    public void unsubscribe(PubSubType type) {
+    public synchronized void unsubscribe(PubSubType type) {
         String name = type.toString();
         Queue<MessageListener> regListeners = map.remove(name);
+        if (Objects.isNull(regListeners)) {
+            return;
+        }
         for (MessageListener listener : regListeners) {
-        	 listenerContainer.removeMessageListener(listener);
+             listenerContainer.removeMessageListener(listener);
         }
     }
 
     @Override
-    public void shutdown() {
+    public synchronized void shutdown() {
+        for (Queue<MessageListener> listeners : map.values()) {
+            for (MessageListener listener : listeners) {
+                listenerContainer.removeMessageListener(listener);
+            }
+        }
+        map.clear();
     }
- 
+
 }

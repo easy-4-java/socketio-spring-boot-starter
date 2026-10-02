@@ -18,6 +18,7 @@ package com.corundumstudio.socketio.spring.boot.listener;
 import org.springframework.util.StringUtils;
 
 import com.corundumstudio.socketio.AuthorizationListener;
+import com.corundumstudio.socketio.AuthorizationResult;
 import com.corundumstudio.socketio.HandshakeData;
 
 /**
@@ -36,21 +37,16 @@ public class JWTAuthorizationListener implements AuthorizationListener {
 	private String authorizationParamName = AUTHORIZATION_PARAM;
 	
 	@Override
+	public AuthorizationResult getAuthorizationResult(HandshakeData data) {
+		return new AuthorizationResult(isAuthorized(data));
+	}
+
+	/** 保留原有 token 非空检查；业务必须自行实现 JWT 签名与权限校验。 */
 	public boolean isAuthorized(HandshakeData data) {
 		
 		String token = obtainToken(data);
 
-		if (token == null) {
-			token = "";
-		}
-
-		token = token.trim();
-		
-		if(StringUtils.hasText(token)) {
-			return true;
-		}
-		
-		return false;
+		return StringUtils.hasText(token);
 	}
 
 	protected String obtainToken(HandshakeData data) {

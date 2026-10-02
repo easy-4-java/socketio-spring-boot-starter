@@ -1,81 +1,19 @@
-<a id="readme-top"></a>
-
-<div align="center">
-
 # socketio-spring-boot-starter
 
-**Spring Boot Starter for socketio**
+Spring Boot 2.x starter for netty-socketio. [简体中文](README.zh-CN.md)
 
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.easy4j/socketio-spring-boot-starter)](https://github.com/easy-4-java/socketio-spring-boot-starter)
-[![Java](https://img.shields.io/badge/Java-17-orange)](#3-requirements-and-compatibility)
-[![License](https://img.shields.io/badge/license-Apache-2.0-green)](https://www.apache.org/licenses/LICENSE-2.0)
+The `main` source version is `io.github.easy4j:socketio-spring-boot-starter:2.0.1-SNAPSHOT`.
+Baseline: Spring Boot 2.6.0, Java 8+, netty-socketio 2.0.14, Netty 4.1.130.Final.
+This documentation and the issue fixes apply to `main`; other branches have separate baselines.
+A source commit does not publish a Maven Central release. Build these fixes with `mvn clean install` before consuming them.
 
-[简体中文](./README.zh-CN.md) | [English](./README.md)
-
-[Positioning](#1-positioning) · [Capabilities](#2-core-capabilities) ·
-[Dependency](#5-dependency) · [Quick Start](#6-quick-start) ·
-[Configuration](#7-configuration-reference) · [Versions](#9-version-lines-and-compatibility) ·
-[Build](#10-build-and-test) · [License](#12-license)
-
-</div>
-
----
-
-> **Current Version**：`2.0.1-SNAPSHOT`<br>
-> **JDK Baseline**：`17`<br>
-> **Group ID**：`io.github.easy4j`<br>
-> **Artifact ID**：`socketio-spring-boot-starter`<br>
-> **License**：Apache License 2.0<br>
-
-## 1. Positioning
-
-**socketio-spring-boot-starter** is a Spring Boot starter that integrates **socketio** for applications using socketio. It provides auto-configuration, property binding, and ready-to-use beans so that applications can consume socketio capabilities with minimal setup.
-
-| Dimension | Description |
-|---|---|
-| Type | Spring Boot Starter |
-| Consumers | Spring Boot applications using socketio |
-| Core Capabilities | auto-configuration, property binding, ready-to-use beans for socketio |
-| JDK | `17` |
-| Coordinates | `io.github.easy4j:socketio-spring-boot-starter:2.0.1-SNAPSHOT` |
-| Config Prefix | `socketio` |
-
-## 2. Core Capabilities
-
-| Capability | Status | Description |
-|---|:---:|---|
-| Auto-configuration | ✅ Stable | Registers socketio beans automatically |
-| Property Binding | ✅ Stable | Binds `socketio.*` to `SocketioHazelcastProperties` |
-| `AuthorizationListener` bean | ✅ Stable | Auto-registered via SocketioServerAutoConfiguration |
-
-## 3. Requirements and Compatibility
-
-| Dependency | Minimum | Evidence |
-|---|---:|---|
-| JDK | `17` | `pom.xml` |
-| Spring Boot | `2.6.0` | `pom.xml` parent |
-| Maven | `3.6+` | Maven Enforcer |
-
-## 4. Auto-configuration
-
-The starter auto-configures the following beans:
-
-| Bean | Condition | Missing Behavior |
-|---|---|---|
-| `AuthorizationListener` | classpath + property | not created |
-| `ExceptionListener` | classpath + property | not created |
-| `StoreFactory` | classpath + property | not created |
-| `SocketIOServer` | classpath + property | not created |
-| `SpringAnnotationScanner` | classpath + property | not created |
-
-Auto-configuration registration:
-
-- `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` (Spring Boot 2.7+ / 3.x / 4.x)
-- `META-INF/spring.factories` (Spring Boot 2.x legacy)
-
-## 5. Dependency
+## Quick start
 
 ```xml
+<!-- Set in the consuming Spring Boot parent-based application. -->
+<properties>
+    <netty.version>4.1.130.Final</netty.version>
+</properties>
 <dependency>
     <groupId>io.github.easy4j</groupId>
     <artifactId>socketio-spring-boot-starter</artifactId>
@@ -83,90 +21,130 @@ Auto-configuration registration:
 </dependency>
 ```
 
-No additional easy4j component dependencies.
+```yaml
+socketio:
+  server:
+    enabled: true
+    hostname: 0.0.0.0
+    port: 9092
+    boss-threads: 1
+    worker-threads: 4
+    ping-interval: 25000
+    ping-timeout: 60000
+    socket-config:
+      reuse-address: true
+```
 
-## 6. Quick Start
+Enable with **`socketio.server.enabled=true`**; it is disabled by default.
+The old `socketio.enabled` example was incorrect. Inject `SocketIOServer` and register listeners or annotated handlers.
+Spring `SmartLifecycle` starts the server after handler registration and stops it on context close.
+There is one shutdown owner and failed starts release initialized Netty resources while retaining the original cause.
 
-### 6.1 Add dependency
+## Cluster and remote unicast (#6)
 
-Add the dependency above to your `pom.xml`.
+The default memory store is local. Choose one Redis backend, using the same Redis deployment on all nodes:
 
-### 6.2 Configure
+* RedisTemplate: add `org.springframework.boot:spring-boot-starter-data-redis` and enable `socketio.redis.template.enabled=true`.
+* Redisson: add `org.redisson:redisson:3.17.7`, enable `socketio.redis.redisson.enabled=true`, and configure its `single.address` (or the corresponding server mode).
+
+The prefixes are `socketio.redis.template` and `socketio.redis.redisson`, not `socket-io.cache.*` from the previous issue reply.
+`main` has no Hazelcast auto-configuration. Do not enable both Redis backends.
+
+```yaml
+spring:
+  redis:
+    host: 127.0.0.1
+    port: 6379
+socketio:
+  redis:
+    template:
+      enabled: true
+    redisson:
+      enabled: false
+```
+
+Or use Redisson:
 
 ```yaml
 socketio:
-  enabled: true
+  redis:
+    template:
+      enabled: false
+    redisson:
+      enabled: true
+      server: single
+      single:
+        address: redis://127.0.0.1:6379
 ```
 
-### 6.3 Use the bean
+**`getClient(sessionId)` only looks up local connections.** Sharing a store does not create a local proxy for remote clients.
+Assign a private room from the authenticated identity on the owning node, then publish to that room from any node:
 
 ```java
-@SpringBootApplication
-public class Application {
-    public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
-    }
-}
+// authenticatedUserId must come from verified application authentication.
+client.joinRoom("user:" + authenticatedUserId);
+server.getRoomOperations("user:" + authenticatedUserId).sendEvent("notice", message);
 ```
 
-Then inject the auto-configured bean in your code:
+A user room targets all that user's connections. For one connection, assign a `session:<server sessionId>` room.
+Do not trust client-supplied user IDs or room names. The default authorization listener allows connections;
+provide an application `AuthorizationListener`. The historical `JWTAuthorizationListener` only checks for a nonblank token, not its signature.
 
-```java
-@Autowired
-private AuthorizationListener socketAuthzListener;
+The RedisTemplate listener is now a Spring-managed bean, and all subscriptions are registered before accepting connections.
+Polling requires sticky sessions at the load balancer. WebSocket-only removes the polling affinity requirement but still needs pub/sub.
+Redis pub/sub provides online delivery, not persistence, offline delivery, or guaranteed cross-node ACK callbacks.
+
+RedisTemplate hash encoding changed to preserve UUID types. Stop old nodes, remove only application-owned temporary Socket.IO
+session/hash data, and upgrade all nodes together. Do not mix old and new nodes or clear a shared Redis database.
+Redis must be trusted: JSON type metadata restores stored objects.
+
+## Heartbeat and browser clients (#3)
+
+`ping-interval` and `ping-timeout` are milliseconds and appear in the Engine.IO handshake.
+Compatible `socket.io-client` implementations handle protocol ping/pong automatically; no application timer is required.
+Engine.IO 4 (Socket.IO 3/4) uses server ping/client pong; Engine.IO 3 reverses that direction.
+Custom business liveness events are separate from protocol heartbeat.
+
+```javascript
+import { io } from "socket.io-client";
+const socket = io("http://localhost:9092", { transports: ["websocket"] });
+socket.on("connect", () => console.log("connected", socket.id));
+socket.on("disconnect", reason => console.log("disconnected", reason));
+socket.on("connect_error", error => console.error(error.message));
+socket.on("notice", message => console.log(message));
 ```
 
-## 7. Configuration Reference
+Set proxy timeouts above `ping-interval + ping-timeout`. A plain WebSocket client is not a Socket.IO client.
+See [protocol and heartbeat](https://socket.io/docs/v4/how-it-works/) and [multiple nodes](https://socket.io/docs/v4/using-multiple-nodes/).
 
-### 7.1 Config Prefix
+## Restart troubleshooting (#5)
 
-`socketio`
+Spring context close and SIGTERM use Spring's shutdown hook. SIGKILL cannot run JVM hooks;
+wait for the process to exit and configure `socket-config.reuse-address=true`.
+Bind failures now clean up resources. Inspect the complete cause chain, bind address, IPv4/IPv6, containers and the old process.
+The original report lacks a complete stack trace, so its unique cause remains unknown;
+regressions now cover the observed lifecycle defects and real process restarts.
 
-### 7.2 Configuration Items
-
-| Property | Type | Default | Required | Description | Sensitive |
-|---|---|---|:---:|---|:---:|
-| `socketio.enabled` | boolean | `true` | No | Enable the starter | No |
-<!-- additional properties below -->
-
-## 8. Version Lines and Compatibility
-
-| Branch | JDK | Spring Boot | Component Version | Status |
-|---|---:|---:|---|:---:|
-| `2.3.x` / `2.7.x` | `8+` | 2.3.x / 2.7.x | `1.0.x` | Maintenance |
-| `3.0.x` ~ `3.5.x` | `17` | 3.x | `2.0.x` | Maintenance |
-| `4.0.x` / `4.1.x` | `17+` | 4.x | `3.0.x` | Active |
-
-## 9. Build and Test
+## Build and compatibility tests (#4)
 
 ```bash
 mvn clean verify
-mvn -pl socketio-spring-boot-starter -am test
+# Dedicated loopback Redis: run all cluster integration tests without flushing it.
+mvn clean verify -Dsocketio.test.redis.port=6379
+# Test another published upstream version.
+mvn clean verify -Dsocketio.test.redis.port=6379 -Dnetty-socketio.version=2.0.14
 ```
 
-## 10. Troubleshooting
+Without the Redis port, only Redis integration tests are skipped. CI always provides Redis and executes them.
+Tests are enabled by default, and no-test builds fail. CI covers Boot 2.3.5.RELEASE/JDK 8, Boot 2.6.0/JDK 8,
+and Boot 2.7.18/JDK 8, 17, 21. Manual CI accepts `netty_socketio_version` for upstream compatibility checks.
+CI runs the same acceptance suite through the installed starter in `src/it/consumer`, so the matrix verifies a consuming application.
+A consumer must also pin `netty.version` as shown above: its own Boot BOM overrides transitive dependency versions.
+For apps without the Boot parent, import `io.netty:netty-bom:4.1.130.Final` in dependency management.
+Keep the Netty BOM aligned when updating netty-socketio; the current Netty pin follows upstream 2.0.14's POM.
 
-| Symptom | Diagnosis | Resolution |
-|---|---|---|
-| Bean not created | Check auto-configuration report | Verify `socketio.enabled=true` and classpath |
-| `ClassNotFoundException` | Missing dependency | Add the required module |
-| Version conflict | `mvn dependency:tree` | Use BOM for version alignment |
+The tests exercise authorization API compatibility, heartbeat binding/pong/timeout, failed-start cleanup, one shutdown,
+port reuse, first restart after SIGTERM/SIGKILL, two-node unicast for RedisTemplate/Redisson,
+non-target isolation, and Redis map/session contracts.
 
-## 11. Contribution
-
-1. Fork the repository.
-2. Create a feature branch.
-3. Run `mvn clean verify` before submitting.
-4. Submit a pull request.
-
-## 12. License
-
-This project is licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
-
----
-
-<div align="center">
-
-[Back to top](#readme-top) · [Issues](https://github.com/easy-4-java/socketio-spring-boot-starter/issues) · [Repository](https://github.com/easy-4-java/socketio-spring-boot-starter)
-
-</div>
+[Apache License 2.0](LICENSE)
