@@ -15,8 +15,15 @@
         <java.version>1.8</java.version>
         <!-- A consumer's dependency management wins over the starter's transitive versions. -->
         <netty.version>4.1.130.Final</netty.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
     <dependencies>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>io.github.easy4j</groupId>
             <artifactId>socketio-spring-boot-starter</artifactId>

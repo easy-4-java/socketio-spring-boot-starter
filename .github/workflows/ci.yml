@@ -29,16 +29,6 @@ jobs:
           - {boot: '2.7.18', java: '8'}
           - {boot: '2.7.18', java: '17'}
           - {boot: '2.7.18', java: '21'}
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -68,12 +58,11 @@ jobs:
         run: >-
           mvn -B --no-transfer-progress clean install -DskipTests
           -Dnetty-socketio.version="$SOCKETIO_VERSION"
-      - name: Test consuming application protocol, Redis cluster, and process restarts
+      - name: Test consuming application with Testcontainers Redis
         env:
           SOCKETIO_VERSION: ${{ inputs.netty_socketio_version || '2.0.14' }}
         run: >-
           mvn -B --no-transfer-progress -f src/it/consumer/pom.xml clean verify
-          -Dsocketio.test.redis.port=6379
           -Dnetty-socketio.version="$SOCKETIO_VERSION"
       - name: Upload test and child-process reports
         if: always()

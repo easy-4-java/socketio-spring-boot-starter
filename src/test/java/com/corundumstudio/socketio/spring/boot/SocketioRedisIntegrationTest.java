@@ -4,6 +4,7 @@ import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.store.RedisTemplateMap;
 import com.corundumstudio.socketio.store.RedisTemplateStore;
 import com.corundumstudio.socketio.store.RedisTemplateStoreFactory;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -18,6 +19,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.Objects;
 import org.springframework.util.StringUtils;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.utility.DockerImageName;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -25,20 +28,38 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class SocketioRedisIntegrationTest {
+    private static String redisHost;
     private static String redisPort;
+    private static GenericContainer<?> redisContainer;
 
     @BeforeAll
     static void requireRedis() {
         redisPort = System.getProperty("socketio.test.redis.port", "");
-        assumeTrue(StringUtils.hasText(redisPort), "Set -Dsocketio.test.redis.port to run against a dedicated Redis");
+        if (StringUtils.hasText(redisPort)) {
+            // 外部 Redis 由调用方管理；测试只清理自己创建的数据。
+            redisHost = System.getProperty("socketio.test.redis.host", "127.0.0.1");
+        } else {
+            // 未提供端口时必须执行容器测试；Docker 不可用应报错，不能静默跳过。
+            redisContainer = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+                    .withExposedPorts(6379);
+            redisContainer.start();
+            redisHost = redisContainer.getHost();
+            redisPort = String.valueOf(redisContainer.getMappedPort(6379));
+        }
+    }
+
+    @AfterAll
+    static void stopRedis() {
+        if (Objects.nonNull(redisContainer)) {
+            redisContainer.stop();
+        }
     }
 
     private ConfigurableApplicationContext node(int port) {
         return SocketioTestSupport.start(port, "--socketio.redis.template.enabled=true",
-                "--spring.redis.host=127.0.0.1", "--spring.redis.port=" + redisPort);
+                "--spring.redis.host=" + redisHost, "--spring.redis.port=" + redisPort);
     }
 
     private ConfigurableApplicationContext node(int port, String backend) {
@@ -46,7 +67,8 @@ class SocketioRedisIntegrationTest {
             return node(port);
         }
         return SocketioTestSupport.start(port, "--socketio.redis.redisson.enabled=true",
-                "--socketio.redis.redisson.single.address=redis://127.0.0.1:" + redisPort,
+                "--socketio.redis.redisson.single.address=redis://"
+                        + (redisHost.contains(":") ? "[" + redisHost + "]" : redisHost) + ":" + redisPort,
                 "--socketio.redis.redisson.threads=2", "--socketio.redis.redisson.netty-threads=2");
     }
 
@@ -94,6 +116,32 @@ class SocketioRedisIntegrationTest {
         }
         if (Objects.nonNull(container)) {
             assertFalse(container.isRunning());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"template", "redisson"})
+    void roomDeliveryResumesAfterReceiverNodeRestarts(String backend) throws Exception {
+        int receiverPort = SocketioTestSupport.freePort();
+        String room = "restart:" + UUID.randomUUID();
+        try (ConfigurableApplicationContext sender = node(SocketioTestSupport.freePort(), backend)) {
+            SocketIOServer senderServer = sender.getBean(SocketIOServer.class);
+            for (int round = 0; round < 2; round++) {
+                // 同端口创建新接收节点，验证重启后恢复跨节点投递。
+                try (ConfigurableApplicationContext receiver = node(receiverPort, backend)) {
+                    CountDownLatch joined = new CountDownLatch(1);
+                    receiver.getBean(SocketIOServer.class).addConnectListener(client -> {
+                        client.joinRoom(room);
+                        joined.countDown();
+                    });
+                    SocketioTestSupport.PollingClient client =
+                            new SocketioTestSupport.PollingClient(receiverPort);
+                    assertTrue(joined.await(5, TimeUnit.SECONDS));
+                    String message = "round-" + round;
+                    senderServer.getRoomOperations(room).sendEvent("restart-notice", message);
+                    assertTrue(client.event("restart-notice").contains(message));
+                }
+            }
         }
     }
 

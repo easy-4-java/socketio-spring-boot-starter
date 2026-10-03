@@ -138,14 +138,18 @@ socket.on("notice", message => console.log(message));
 ## 构建与兼容性验证（#4）
 
 ```bash
+# Docker 需已启动；Testcontainers 自动创建和销毁独立 Redis，使用随机映射端口：
 mvn clean verify
-# 指向专供测试的 loopback Redis，执行完整集群集成测试（不清空 Redis）：
-mvn clean verify -Dsocketio.test.redis.port=6379
-# 验证另一个已发布的上游版本：
-mvn clean verify -Dsocketio.test.redis.port=6379 -Dnetty-socketio.version=2.0.14
+# 可选：使用专供测试的外部 Redis，不启动容器、不清空数据库：
+mvn clean verify -Dsocketio.test.redis.host=127.0.0.1 -Dsocketio.test.redis.port=6379
+# 使用 Testcontainers 验证另一个已发布的上游版本：
+mvn clean verify -Dnetty-socketio.version=2.0.14
 ```
 
-未指定 Redis 端口时仅跳过 Redis 集成测试；CI 始终配置 Redis 并执行它们，Surefire 默认执行测试。
+Redis 集成测试默认使用 Testcontainers 1.21.4 的 `redis:7-alpine` 容器，按测试类启动一次，
+将实际 host 和动态映射端口传给两种后端，并在测试结束后销毁。Docker 不可用、镜像拉取或启动失败会使测试失败，不会静默跳过。
+指定 `socketio.test.redis.port` 时使用外部 Redis，host 默认 `127.0.0.1`，可通过 `socketio.test.redis.host` 修改；外部实例由调用方管理。
+CI 也使用同一自动容器路径，不再依赖固定端口的 Redis service；Surefire 默认执行测试。
 CI 覆盖 Boot 2.3.5.RELEASE / JDK 8、Boot 2.6.0 / JDK 8、Boot 2.7.18 / JDK 8、17、21。
 手动运行 CI 可通过 `netty_socketio_version` 指定待适配的上游版本。
 CI 通过 `src/it/consumer` 引入已安装的 Starter jar 后运行同一验收测试，验证实际消费方。
@@ -154,6 +158,6 @@ CI 通过 `src/it/consumer` 引入已安装的 Starter jar 后运行同一验收
 版本升级需验证 Netty BOM 的一致性，不能只改一个 jar。当前 Netty 版本与上游 2.0.14 的 POM 对齐。
 
 测试覆盖：授权 API 适配、配置绑定与 ping/pong 超时、启动失败回收、单次关闭、端口复用、
-SIGTERM/SIGKILL 后首次重启、RedisTemplate/Redisson 两节点房间单推、非目标连接隔离、Redis Map/session 语义。
+SIGTERM/SIGKILL 后首次重启、RedisTemplate/Redisson 两节点房间单推、非目标连接隔离、两种后端接收节点重启后恢复投递、Redis Map/session 语义。
 
 [Apache License 2.0](LICENSE)

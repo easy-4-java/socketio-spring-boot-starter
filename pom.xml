@@ -416,9 +416,16 @@
         <lombok.version>1.18.36</lombok.version>
         <hazelcast.version>3.12.13</hazelcast.version>
         <redisson.version>3.17.7</redisson.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.projectlombok</groupId>

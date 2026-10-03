@@ -128,14 +128,19 @@ regressions now cover the observed lifecycle defects and real process restarts.
 ## Build and compatibility tests (#4)
 
 ```bash
+# Docker must be running: Testcontainers starts/stops an isolated Redis on a random port.
 mvn clean verify
-# Dedicated loopback Redis: run all cluster integration tests without flushing it.
-mvn clean verify -Dsocketio.test.redis.port=6379
-# Test another published upstream version.
-mvn clean verify -Dsocketio.test.redis.port=6379 -Dnetty-socketio.version=2.0.14
+# Optional: use a dedicated external Redis without starting a container or flushing it.
+mvn clean verify -Dsocketio.test.redis.host=127.0.0.1 -Dsocketio.test.redis.port=6379
+# Test another published upstream version with Testcontainers.
+mvn clean verify -Dnetty-socketio.version=2.0.14
 ```
 
-Without the Redis port, only Redis integration tests are skipped. CI always provides Redis and executes them.
+Redis integration tests use Testcontainers 1.21.4 (`redis:7-alpine`) by default: the container is started once
+for the test class, its actual host/mapped port is injected into both backends, and it is stopped after the tests.
+Docker/image/startup failures fail the build instead of skipping integration tests. An external Redis is used only
+when `socketio.test.redis.port` is supplied; its host defaults to `127.0.0.1`, and its lifecycle stays with the caller.
+The CI matrix uses the same automatic-container path, with no fixed Redis service port.
 Tests are enabled by default, and no-test builds fail. CI covers Boot 2.3.5.RELEASE/JDK 8, Boot 2.6.0/JDK 8,
 and Boot 2.7.18/JDK 8, 17, 21. Manual CI accepts `netty_socketio_version` for upstream compatibility checks.
 CI runs the same acceptance suite through the installed starter in `src/it/consumer`, so the matrix verifies a consuming application.
@@ -145,6 +150,6 @@ Keep the Netty BOM aligned when updating netty-socketio; the current Netty pin f
 
 The tests exercise authorization API compatibility, heartbeat binding/pong/timeout, failed-start cleanup, one shutdown,
 port reuse, first restart after SIGTERM/SIGKILL, two-node unicast for RedisTemplate/Redisson,
-non-target isolation, and Redis map/session contracts.
+non-target isolation, delivery after receiver-node restart for both Redis backends, and Redis map/session contracts.
 
 [Apache License 2.0](LICENSE)
