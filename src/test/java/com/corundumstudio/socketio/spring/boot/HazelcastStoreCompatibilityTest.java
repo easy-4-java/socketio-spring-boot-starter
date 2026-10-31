@@ -28,6 +28,8 @@ class HazelcastStoreCompatibilityTest {
         Config config = new Config();
         config.setInstanceName("socketio-abi-" + UUID.randomUUID());
         config.setProperty("hazelcast.phone.home.enabled", "false");
+        // Interface selection alone does not prevent binding the wildcard address.
+        config.setProperty("hazelcast.socket.bind.any", "false");
         config.setProperty("hazelcast.operation.thread.count", "2");
         config.setProperty("hazelcast.operation.generic.thread.count", "2");
         config.setProperty("hazelcast.io.thread.count", "2");
