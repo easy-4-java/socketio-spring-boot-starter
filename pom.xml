@@ -416,6 +416,8 @@
         <maven-surefire-plugin.version>2.22.1</maven-surefire-plugin.version>
         <maven-nexus-staging-plugin.version>1.6.8</maven-nexus-staging-plugin.version>
         <netty-socketio.version>2.0.9</netty-socketio.version>
+        <!-- netty-socketio 2.0.9 is compiled against the Hazelcast 3.x ABI. -->
+        <hazelcast.version>3.12.12</hazelcast.version>
         <redisson.version>3.17.7</redisson.version>
     </properties>
 
@@ -481,10 +483,17 @@
             <version>${netty-socketio.version}</version>
         </dependency>
 
-        <!-- ClientConfig extends Hazelcast's client configuration API. -->
+        <!-- Keep client and core aligned with netty-socketio's IMap/ITopic ABI.
+             Boot 2.6 defaults to Hazelcast 4, which is not binary compatible. -->
+        <dependency>
+            <groupId>com.hazelcast</groupId>
+            <artifactId>hazelcast-client</artifactId>
+            <version>${hazelcast.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.hazelcast</groupId>
             <artifactId>hazelcast</artifactId>
+            <version>${hazelcast.version}</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/org.redisson/redisson -->
