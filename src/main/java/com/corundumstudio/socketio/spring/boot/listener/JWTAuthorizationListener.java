@@ -36,7 +36,6 @@ public class JWTAuthorizationListener implements AuthorizationListener {
 	private String authorizationHeaderName = AUTHORIZATION_HEADER;
 	private String authorizationParamName = AUTHORIZATION_PARAM;
 	
-	@Override
 	public boolean isAuthorized(HandshakeData data) {
 		
 		String token = obtainToken(data);
